@@ -1,0 +1,80 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # leer código del repo para el diagnóstico
+      issues: write # asignar labels y publicar comentario
+      id-token: write # requerido por claude_code_oauth_token
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        id: claude-triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*),Read"'
+          prompt: |
+            Eres un asistente de triaje de issues para el repositorio de Tetris (${{ github.repository }}).
+            Se ha creado o editado el issue #${{ github.event.issue.number }}.
+
+            **Tu tarea tiene dos partes:**
+
+            ## Parte 1 — Asignar labels
+
+            1. Lee el issue con: `gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }}`
+            2. Consulta los labels disponibles con: `gh label list --repo ${{ github.repository }}`
+            3. Asigna ÚNICAMENTE los labels que correspondan de entre los existentes. No inventes ni crees labels nuevos.
+               - `bug` → si el issue describe un comportamiento incorrecto o error.
+               - `enhancement` → si es una solicitud de mejora o nueva funcionalidad.
+               - `documentation` → si se refiere a documentación.
+               - `question` → si es una pregunta.
+               - `duplicate` → si es una duplicación de otro issue existente.
+               - `invalid` → si no corresponde a un problema real o está mal formulado.
+               - `wontfix` → si claramente no se va a implementar.
+               - `help wanted` → si requiere ayuda externa o es complejo.
+               - `good first issue` → si es una tarea accesible para alguien nuevo.
+            4. Asigna los labels así: `gh issue edit ${{ github.event.issue.number }} --repo ${{ github.repository }} --add-label "LABEL1,LABEL2"`
+
+            ## Parte 2 — Diagnóstico técnico detallado
+
+            Inspecciona el código del repositorio cuando sea relevante (archivos principales: `game.js`, `index.html`, `style.css`, `CLAUDE.md`).
+
+            Luego publica UN ÚNICO comentario en español con `gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "..."` que incluya las siguientes secciones:
+
+            ```
+            ## 🔍 Diagnóstico técnico
+
+            ### Resumen
+            [Descripción concisa del problema o solicitud]
+
+            ### Causa probable / Alcance
+            [Para bugs: causa técnica probable. Para features: alcance y qué implica implementar.]
+
+            ### Archivos afectados
+            [Lista de archivos concretos del repo que habría que modificar, con una línea de contexto de por qué]
+
+            ### Enfoque de solución sugerido
+            [Pasos concretos y ordenados para implementar la solución]
+
+            ### Riesgos / Consideraciones
+            [Posibles efectos secundarios, regresiones, o cosas a tener en cuenta]
+
+            ---
+            *Análisis generado automáticamente por Claude. Revisión humana recomendada.*
+            ```
+
+            **IMPORTANTE:**
+            - Responde siempre en español.
+            - Si el evento es `edited` (issue editado) y ya existe un comentario de diagnóstico tuyo, edita ese comentario en lugar de crear uno nuevo.
+            - Sé técnico y preciso; este diagnóstico lo usarán los desarrolladores como base para implementar la solución.
